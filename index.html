@@ -6,20 +6,33 @@
   <meta name="theme-color" content="#071827" />
   <meta name="description" content="Premium Seiko watch ecommerce storefront." />
   <title>Seiko Watches — Timeless Since 1881</title>
-  <link rel="preconnect" href="https://www.seikowatches.com" crossorigin />
-  <link rel="dns-prefetch" href="https://www.seikowatches.com" />
-  <link rel="preload" as="image" href="https://www.seikowatches.com/us-en/-/media/Images/Product--Image/All/Seiko/2025/08/19/21/10/SRPL55K1/SRPL55K1.png?mh=3840&mw=3840" fetchpriority="high" />
+  <link rel="preload" as="image" href="./assets/hero-watch.webp" fetchpriority="high" />
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="stylesheet" href="./watch3d.css" />
 </head>
 <body>
   <div id="root"></div>
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/htm@3.1.1/dist/htm.js" crossorigin></script>
-  <script src="https://unpkg.com/three@0.128.0/build/three.min.js" crossorigin></script>
-  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin></script>
   <script src="./app.js"></script>
-  <script src="./watch3d.js"></script>
+  <script>
+    (() => {
+      const applyHeroImage = () => {
+        const image = document.querySelector('.hero-watch img.watch-img');
+        if (!image) return false;
+        image.src = './assets/hero-watch.webp';
+        image.alt = 'Seiko 5 blue dial watch';
+        image.removeAttribute('srcset');
+        return true;
+      };
+      if (!applyHeroImage()) {
+        const observer = new MutationObserver(() => {
+          if (applyHeroImage()) observer.disconnect();
+        });
+        observer.observe(document.getElementById('root'), { childList: true, subtree: true });
+        setTimeout(() => observer.disconnect(), 5000);
+      }
+    })();
+  </script>
 </body>
 </html>
