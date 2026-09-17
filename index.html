@@ -8,6 +8,33 @@
   <title>Seiko Watches — Timeless Since 1881</title>
   <link rel="preload" as="image" href="./assets/hero-watch.webp" fetchpriority="high" />
   <link rel="stylesheet" href="./styles.css" />
+  <style>
+    .hero-watch .hero-video{
+      position:absolute;
+      inset:0;
+      z-index:2;
+      width:100%;
+      height:100%;
+      display:block;
+      object-fit:cover;
+      object-position:center;
+      background:#07131e;
+      pointer-events:none;
+      opacity:0;
+      transition:opacity .35s ease;
+    }
+    .hero-watch.video-ready .hero-video{opacity:1}
+    .hero-watch.video-ready>.watch-img{opacity:0;visibility:hidden}
+    .hero-watch.video-ready .hero-glow{opacity:.08}
+    .hero-watch.video-ready:after{opacity:0}
+    @media (max-width:720px){
+      .hero-watch .hero-video{object-position:50% 50%}
+    }
+    @media (prefers-reduced-motion:reduce){
+      .hero-watch .hero-video{display:none}
+      .hero-watch.video-ready>.watch-img{opacity:1;visibility:visible}
+    }
+  </style>
 </head>
 <body>
   <div id="root"></div>
@@ -17,17 +44,77 @@
   <script src="./app.js"></script>
   <script>
     (() => {
-      const applyHeroImage = () => {
-        const image = document.querySelector('.hero-watch img.watch-img');
-        if (!image) return false;
-        image.src = './assets/hero-watch.webp';
-        image.alt = 'Seiko 5 blue dial watch';
-        image.removeAttribute('srcset');
+      const CHUNK_COUNT = 10;
+      const chunkPaths = Array.from(
+        { length: CHUNK_COUNT },
+        (_, i) => `./assets/video/hero-${String(i).padStart(2, '0')}.txt`
+      );
+
+      async function initHeroVideo(holder) {
+        const poster = holder.querySelector('img.watch-img');
+        if (poster) {
+          poster.src = './assets/hero-watch.webp';
+          poster.alt = 'Seiko 5 blue dial watch';
+          poster.removeAttribute('srcset');
+        }
+
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+        try {
+          const parts = await Promise.all(chunkPaths.map(async (path) => {
+            const response = await fetch(path, { cache: 'force-cache' });
+            if (!response.ok) throw new Error(`Failed to load ${path}`);
+            return (await response.text()).trim();
+          }));
+
+          const binary = atob(parts.join(''));
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+          const videoUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
+
+          const video = document.createElement('video');
+          video.className = 'hero-video';
+          video.muted = true;
+          video.defaultMuted = true;
+          video.autoplay = true;
+          video.loop = true;
+          video.playsInline = true;
+          video.preload = 'auto';
+          video.poster = './assets/hero-watch.webp';
+          video.setAttribute('muted', '');
+          video.setAttribute('playsinline', '');
+          video.setAttribute('aria-label', 'Seiko watch rotating in the hero');
+          video.src = videoUrl;
+
+          const label = holder.querySelector('.hero-label');
+          holder.insertBefore(video, label || null);
+
+          const showVideo = () => {
+            holder.classList.add('video-ready');
+            video.play().catch(() => {});
+          };
+
+          video.addEventListener('canplay', showVideo, { once: true });
+          video.addEventListener('error', () => {
+            holder.classList.remove('video-ready');
+            URL.revokeObjectURL(videoUrl);
+          }, { once: true });
+        } catch (error) {
+          console.warn('Hero video unavailable; using poster image.', error);
+        }
+      }
+
+      function mountHero() {
+        const holder = document.querySelector('.hero-watch');
+        if (!holder || holder.dataset.videoMounted) return false;
+        holder.dataset.videoMounted = 'true';
+        initHeroVideo(holder);
         return true;
-      };
-      if (!applyHeroImage()) {
+      }
+
+      if (!mountHero()) {
         const observer = new MutationObserver(() => {
-          if (applyHeroImage()) observer.disconnect();
+          if (mountHero()) observer.disconnect();
         });
         observer.observe(document.getElementById('root'), { childList: true, subtree: true });
         setTimeout(() => observer.disconnect(), 5000);
