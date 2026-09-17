@@ -61,16 +61,31 @@
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
         try {
-          const parts = await Promise.all(chunkPaths.map(async (path) => {
-            const response = await fetch(path, { cache: 'force-cache' });
+          const parts = await Promise.all(chunkPaths.map(async (path, index) => {
+            const response = await fetch(path, { cache: 'no-cache' });
             if (!response.ok) throw new Error(`Failed to load ${path}`);
-            return (await response.text()).trim();
+            // Keep only valid Base64 characters. All chunks except the final one
+            // were created at a fixed 8,000-character size.
+            let clean = (await response.text()).replace(/[^A-Za-z0-9+/=]/g, '');
+            if (index < CHUNK_COUNT - 1 && clean.length > 8000) clean = clean.slice(0, 8000);
+            return clean;
           }));
 
-          const binary = atob(parts.join(''));
+          let encoded = parts.join('').replace(/=/g, '');
+          const remainder = encoded.length % 4;
+          if (remainder) encoded += '='.repeat(4 - remainder);
+
+          const binary = atob(encoded);
           const bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-          const videoUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
+
+          // Google Flow exports can carry a WebM container even when the downloaded
+          // filename ends in .mp4. Detect the actual container from its magic bytes.
+          const isWebM = bytes.length > 4 &&
+            bytes[0] === 0x1a && bytes[1] === 0x45 &&
+            bytes[2] === 0xdf && bytes[3] === 0xa3;
+          const videoType = isWebM ? 'video/webm' : 'video/mp4';
+          const videoUrl = URL.createObjectURL(new Blob([bytes], { type: videoType }));
 
           const video = document.createElement('video');
           video.className = 'hero-video';
