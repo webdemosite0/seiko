@@ -1,0 +1,55 @@
+name: Enhance hero video
+
+on:
+  push:
+    paths:
+      - ".github/workflows/enhance-hero.yml"
+      - "assets/video/hero-*.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  enhance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Rebuild current hero source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, pathlib, re
+          parts = []
+          for i in range(10):
+              p = pathlib.Path(f"assets/video/hero-{i:02d}.txt")
+              s = re.sub(r"[^A-Za-z0-9+/=]", "", p.read_text())
+              if i < 9 and len(s) > 8000:
+                  s = s[:8000]
+              parts.append(s)
+          encoded = "".join(parts).replace("=", "")
+          encoded += "=" * ((4 - len(encoded) % 4) % 4)
+          pathlib.Path("/tmp/hero-source.mp4").write_bytes(base64.b64decode(encoded))
+          PY
+
+      - name: Produce enhanced 1080p hero
+        shell: bash
+        run: |
+          ffmpeg -y -i /tmp/hero-source.mp4 -an \
+            -vf "scale=1920:1080:flags=lanczos,unsharp=5:5:0.60:5:5:0,eq=contrast=1.025:saturation=1.01" \
+            -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p \
+            -movflags +faststart assets/video/hero-enhanced.mp4
+
+      - name: Commit enhanced video
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/video/hero-enhanced.mp4
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Generate enhanced hero video [skip ci]"
+          git push
