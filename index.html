@@ -16,8 +16,11 @@
       width:100%;
       height:100%;
       display:block;
-      object-fit:cover;
+      object-fit:contain;
       object-position:center;
+      transform:translateZ(0);
+      backface-visibility:hidden;
+      filter:contrast(1.035) saturate(1.02);
       background:#07131e;
       pointer-events:none;
       opacity:0;
@@ -28,7 +31,7 @@
     .hero-watch.video-ready .hero-glow{opacity:.08}
     .hero-watch.video-ready:after{opacity:0}
     @media (max-width:720px){
-      .hero-watch .hero-video{object-position:50% 50%}
+      .hero-watch .hero-video{object-position:50% 50%;object-fit:contain}
     }
     @media (prefers-reduced-motion:reduce){
       .hero-watch .hero-video{display:none}
