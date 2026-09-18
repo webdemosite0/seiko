@@ -53,6 +53,69 @@
         (_, i) => `./assets/video/hero-${String(i).padStart(2, '0')}.txt`
       );
 
+      function buildVideo(holder, src, revokeOnError = false) {
+        const existing = holder.querySelector('.hero-video');
+        if (existing) existing.remove();
+
+        const video = document.createElement('video');
+        video.className = 'hero-video';
+        video.muted = true;
+        video.defaultMuted = true;
+        video.autoplay = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.preload = 'auto';
+        video.poster = './assets/hero-watch.webp';
+        video.setAttribute('muted', '');
+        video.setAttribute('playsinline', '');
+        video.setAttribute('aria-label', 'Seiko watch rotating in the hero');
+        video.src = src;
+
+        const label = holder.querySelector('.hero-label');
+        holder.insertBefore(video, label || null);
+
+        return new Promise((resolve, reject) => {
+          const ready = () => {
+            holder.classList.add('video-ready');
+            video.play().catch(() => {});
+            resolve(video);
+          };
+          const failed = () => {
+            holder.classList.remove('video-ready');
+            video.remove();
+            if (revokeOnError) URL.revokeObjectURL(src);
+            reject(new Error('Hero video source failed'));
+          };
+          video.addEventListener('canplay', ready, { once: true });
+          video.addEventListener('error', failed, { once: true });
+        });
+      }
+
+      async function loadChunkFallback(holder) {
+        const parts = await Promise.all(chunkPaths.map(async (path, index) => {
+          const response = await fetch(path, { cache: 'no-cache' });
+          if (!response.ok) throw new Error(`Failed to load ${path}`);
+          let clean = (await response.text()).replace(/[^A-Za-z0-9+/=]/g, '');
+          if (index < CHUNK_COUNT - 1 && clean.length > 8000) clean = clean.slice(0, 8000);
+          return clean;
+        }));
+
+        let encoded = parts.join('').replace(/=/g, '');
+        const remainder = encoded.length % 4;
+        if (remainder) encoded += '='.repeat(4 - remainder);
+
+        const binary = atob(encoded);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+
+        const isWebM = bytes.length > 4 &&
+          bytes[0] === 0x1a && bytes[1] === 0x45 &&
+          bytes[2] === 0xdf && bytes[3] === 0xa3;
+        const type = isWebM ? 'video/webm' : 'video/mp4';
+        const blobUrl = URL.createObjectURL(new Blob([bytes], { type }));
+        await buildVideo(holder, blobUrl, true);
+      }
+
       async function initHeroVideo(holder) {
         const poster = holder.querySelector('img.watch-img');
         if (poster) {
@@ -64,61 +127,15 @@
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
         try {
-          const parts = await Promise.all(chunkPaths.map(async (path, index) => {
-            const response = await fetch(path, { cache: 'no-cache' });
-            if (!response.ok) throw new Error(`Failed to load ${path}`);
-            // Keep only valid Base64 characters. All chunks except the final one
-            // were created at a fixed 8,000-character size.
-            let clean = (await response.text()).replace(/[^A-Za-z0-9+/=]/g, '');
-            if (index < CHUNK_COUNT - 1 && clean.length > 8000) clean = clean.slice(0, 8000);
-            return clean;
-          }));
-
-          let encoded = parts.join('').replace(/=/g, '');
-          const remainder = encoded.length % 4;
-          if (remainder) encoded += '='.repeat(4 - remainder);
-
-          const binary = atob(encoded);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-
-          // Google Flow exports can carry a WebM container even when the downloaded
-          // filename ends in .mp4. Detect the actual container from its magic bytes.
-          const isWebM = bytes.length > 4 &&
-            bytes[0] === 0x1a && bytes[1] === 0x45 &&
-            bytes[2] === 0xdf && bytes[3] === 0xa3;
-          const videoType = isWebM ? 'video/webm' : 'video/mp4';
-          const videoUrl = URL.createObjectURL(new Blob([bytes], { type: videoType }));
-
-          const video = document.createElement('video');
-          video.className = 'hero-video';
-          video.muted = true;
-          video.defaultMuted = true;
-          video.autoplay = true;
-          video.loop = true;
-          video.playsInline = true;
-          video.preload = 'auto';
-          video.poster = './assets/hero-watch.webp';
-          video.setAttribute('muted', '');
-          video.setAttribute('playsinline', '');
-          video.setAttribute('aria-label', 'Seiko watch rotating in the hero');
-          video.src = videoUrl;
-
-          const label = holder.querySelector('.hero-label');
-          holder.insertBefore(video, label || null);
-
-          const showVideo = () => {
-            holder.classList.add('video-ready');
-            video.play().catch(() => {});
-          };
-
-          video.addEventListener('canplay', showVideo, { once: true });
-          video.addEventListener('error', () => {
-            holder.classList.remove('video-ready');
-            URL.revokeObjectURL(videoUrl);
-          }, { once: true });
-        } catch (error) {
-          console.warn('Hero video unavailable; using poster image.', error);
+          // Prefer the generated high-quality binary asset. It avoids Base64
+          // reconstruction and lets the browser stream the video normally.
+          await buildVideo(holder, './assets/video/hero-enhanced.mp4?v=2');
+        } catch (primaryError) {
+          try {
+            await loadChunkFallback(holder);
+          } catch (fallbackError) {
+            console.warn('Hero video unavailable; using poster image.', fallbackError);
+          }
         }
       }
 
